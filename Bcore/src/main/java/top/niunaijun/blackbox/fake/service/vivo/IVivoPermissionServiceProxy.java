@@ -4,15 +4,16 @@ import android.os.Process;
 import black.android.os.BRServiceManager;
 import black.model.vivo.BRIVivoPermissionServiceStub;
 import top.niunaijun.blackbox.BlackBoxCore;
+import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.fake.hook.BinderInvocationStub;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
 import top.niunaijun.blackbox.fake.hook.ProxyMethod;
 import top.niunaijun.blackbox.utils.MethodParameterUtils;
 import java.lang.reflect.Method;
 
-/* JADX INFO: loaded from: classes3.dex */
 public class IVivoPermissionServiceProxy extends BinderInvocationStub {
-    @Override // top.niunaijun.blackbox.fake.hook.IInjectHook
+
+    @Override
     public boolean isBadEnv() {
         return false;
     }
@@ -21,22 +22,36 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
         super(BRServiceManager.get().getService("vivo_permission_service"));
     }
 
-    @Override // top.niunaijun.blackbox.fake.hook.ClassInvocationStub
+    @Override
     protected Object getWho() {
         return BRIVivoPermissionServiceStub.get().asInterface(BRServiceManager.get().getService("vivo_permission_service"));
     }
 
-    @Override // top.niunaijun.blackbox.fake.hook.ClassInvocationStub
+    @Override
     protected void inject(Object obj, Object obj2) {
         replaceSystemService("vivo_permission_service");
     }
 
+    private static void replaceLastUserId(Object[] args) {
+        if (args == null || args.length == 0) {
+            return;
+        }
+        for (int i = args.length - 1; i >= 0; i--) {
+            if (args[i] instanceof Integer) {
+                args[i] = BActivityThread.getUserId();
+                return;
+            }
+        }
+    }
+
     @ProxyMethod("checkPermission")
     public static class checkPermission extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
-            if (((Integer) objArr[2]).intValue() == Process.myUid()) {
-                objArr[2] = Integer.valueOf(BlackBoxCore.getHostUid());
+            if (objArr != null && objArr.length > 2 && objArr[2] instanceof Integer) {
+                if (((Integer) objArr[2]).intValue() == Process.myUid()) {
+                    objArr[2] = Integer.valueOf(BlackBoxCore.getHostUid());
+                }
             }
             return method.invoke(obj, objArr);
         }
@@ -44,7 +59,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("getAppPermission")
     public static class getAppPermission extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
@@ -53,7 +68,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("setAppPermission")
     public static class setAppPermission extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
@@ -62,7 +77,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("setWhiteListApp")
     public static class setWhiteListApp extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
@@ -71,7 +86,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("setBlackListApp")
     public static class setBlackListApp extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
@@ -80,7 +95,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("noteStartActivityProcess")
     public static class noteStartActivityProcess extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
@@ -89,7 +104,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("isBuildInThirdPartApp")
     public static class isBuildInThirdPartApp extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
@@ -98,21 +113,21 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("checkDelete")
     public static class checkDelete extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
-            if (objArr[1] instanceof String) {
+            if (objArr != null && objArr.length > 1 && objArr[1] instanceof String) {
                 objArr[1] = BlackBoxCore.getHostPkg();
             }
-            MethodParameterUtils.replaceLastUserId(objArr);
+            replaceLastUserId(objArr);
             return method.invoke(obj, objArr);
         }
     }
 
     @ProxyMethod("setOnePermission")
     public static class setOnePermission extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
-            MethodParameterUtils.replaceLastUserId(objArr);
+            replaceLastUserId(objArr);
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
         }
@@ -120,9 +135,9 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("setOnePermissionExt")
     public static class setOnePermissionExt extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
-            MethodParameterUtils.replaceLastUserId(objArr);
+            replaceLastUserId(objArr);
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
         }
@@ -130,7 +145,7 @@ public class IVivoPermissionServiceProxy extends BinderInvocationStub {
 
     @ProxyMethod("isVivoImeiPkg")
     public static class isVivoImeiPkg extends MethodHook {
-        @Override // top.niunaijun.blackbox.fake.hook.MethodHook
+        @Override
         protected Object hook(Object obj, Method method, Object[] objArr) throws Throwable {
             MethodParameterUtils.replaceFirstAppPkg(objArr);
             return method.invoke(obj, objArr);
