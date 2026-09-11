@@ -244,13 +244,19 @@ public class IOCore {
     private static boolean shouldFilterMapsLine(String line, String hostPkg) {
         if (!line.contains("/")) return false;
         if (!TextUtils.isEmpty(hostPkg) && line.contains(hostPkg)) return true;
-        if (line.contains("niunaijun"))   return true;
-        if (line.contains("/blackbox/"))  return true;
-        if (line.contains("Bcore"))       return true;
-        if (line.contains("BCore"))       return true;
-        if (line.contains("VirtualApp"))  return true;
-        if (line.contains("virtualapp")) return true;
-        if (line.contains("/sandbox/"))   return true;
+        if (line.contains("niunaijun"))    return true;
+        if (line.contains("/blackbox/"))   return true;
+        if (line.contains("Bcore"))        return true;
+        if (line.contains("BCore"))        return true;
+        if (line.contains("VirtualApp"))   return true;
+        if (line.contains("virtualapp"))   return true;
+        if (line.contains("/sandbox/"))    return true;
+        // Additional: strip loader package and mod library traces
+        if (line.contains("com.fs4ip"))    return true;
+        if (line.contains("akroengine"))   return true;
+        if (line.contains("libakro"))      return true;
+        if (line.contains("samuraiengine")) return true;
+        if (line.contains("black_box"))    return true;
         return false;
     }
 
