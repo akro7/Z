@@ -74,6 +74,15 @@ public class MethodParameterUtils {
         }
     }
 
+    public static void replaceLastUserId(Object[] args) {
+        if (args == null)
+            return;
+        int index = ArrayUtils.indexOfLast(args, Integer.class);
+        if (index != -1) {
+            args[index] = BActivityThread.getUserId();
+        }
+    }
+
     public static String replaceLastAppPkg(Object[] args) {
         int index = ArrayUtils.indexOfLast(args, String.class);
         if (index != -1) {
@@ -132,7 +141,6 @@ public class MethodParameterUtils {
         classes.toArray(result);
         return result;
     }
-
 
     public static void getAllInterfaces(Class clazz, HashSet<Class<?>> interfaceCollection) {
         Class<?>[] classes = clazz.getInterfaces();
