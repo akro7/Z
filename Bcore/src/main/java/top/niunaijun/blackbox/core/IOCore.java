@@ -172,139 +172,96 @@ public class IOCore {
         rule.put("/su/bin/su", "/su/bin/su-fake");
     }
 
-    private void proc(Map<String, String> rule) {
-
     /**
      * Register /proc/self/maps redirect with a PRE-WRITTEN FILTERED FILE.
      *
-     * ROOT CAUSE OF ALL ISSUES (both security detection + missing menu):
+     * Root cause of both issues (security detection + no menu):
      *
-     * Previous versions called addRedirect(mapsPath, targetPath) where targetPath
-     * was created by FileUtils.mkdirs() — making it a DIRECTORY, not a file.
-     * When any code (Helium SDK or our own get8BPbase()) opens "/proc/self/maps",
-     * the IO hook redirected to that directory fd.  Reading a directory fd returns
-     * EISDIR; the caller gets no content.
+     * The old impl called FileUtils.mkdirs(targetPath), which creates targetPath as a
+     * DIRECTORY. When the game opens "/proc/self/maps" the IO hook redirects to this
+     * directory fd. Reading a directory fd returns EISDIR — no content.
      *
-     * For Helium: empty maps = parsing fails = silently skips the check (sometimes).
-     * For get8BPbase(): empty maps = libmain never found = all hooks fail = NO MENU.
+     * For Helium: occasionally skip-parses (detection evaded or fires nondeterministically).
+     * For get8BPbase(): never finds libmain (returns 0) → all hooks fail → NO MENU.
      *
-     * FIX: Read the real /proc/<pid>/maps (using numeric PID to bypass our own
-     * redirect), filter out lines that reveal the virtual environment (loader pkg,
-     * BlackBox paths, niunaijun), write the sanitised content to a real FILE, then
-     * register the redirect.  Both parties get a clean, readable maps file.
+     * Fix: read /proc/<numericPid>/maps (numeric PID avoids our own redirect), filter
+     * lines that reveal the virtual-env (loader pkg, niunaijun, /blackbox/, BCore),
+     * write the sanitised content to a real FILE, then register the redirect.
+     * Both Helium and get8BPbase() now read a clean, readable maps file.
      */
     private void proc(Map<String, String> rule) {
         int appPid = BlackBoxCore.getAppPid();
-        int pid    = Process.myPid();
+        int pid    = android.os.Process.myPid();
         String selfProc = "/proc/self/";
         String proc     = "/proc/" + pid + "/";
 
-        // ── cmdline redirect (unchanged) ──────────────────────────────────────
+        // cmdline redirect (unchanged from original)
         String cmdline = new File(BEnvironment.getProcDir(appPid), "cmdline").getAbsolutePath();
         rule.put(proc + "cmdline",     cmdline);
         rule.put(selfProc + "cmdline", cmdline);
 
-        // ── maps redirect — write a filtered copy first ───────────────────────
-        File procDir = BEnvironment.getProcDir(appPid);
+        // maps redirect — write a filtered copy first
+        File procDir   = BEnvironment.getProcDir(appPid);
         FileUtils.mkdirs(procDir.getAbsolutePath());
 
         File mapsTarget = new File(procDir, "maps");
         writeFilteredMaps(pid, mapsTarget);
+        rule.put(proc + "maps",     mapsTarget.getAbsolutePath());
+        rule.put(selfProc + "maps", mapsTarget.getAbsolutePath());
 
-        String mapsPath = mapsTarget.getAbsolutePath();
-        rule.put(proc + "maps",     mapsPath);
-        rule.put(selfProc + "maps", mapsPath);
-
-        // ── status redirect ───────────────────────────────────────────────────
+        // status redirect
         File statusTarget = new File(procDir, "status");
         writeFilteredStatus(pid, statusTarget);
         rule.put(proc + "status",     statusTarget.getAbsolutePath());
         rule.put(selfProc + "status", statusTarget.getAbsolutePath());
     }
 
-    /**
-     * Read /proc/<pid>/maps (numeric PID — NOT "self" — so our redirect doesn't
-     * intercept the read), strip lines that reveal the virtual host environment,
-     * and write the result to destFile.
-     *
-     * Lines kept:   anything with /com.miniclip.eightballpool/, /system/, /vendor/,
-     *               anonymous mappings, stack/heap, and everything else that is not
-     *               a virtual-env fingerprint.
-     *
-     * Lines stripped: loader package (com.fs4ip.delta), BlackBox paths
-     *                 (niunaijun, /blackbox/, /bcore/), and any path that
-     *                 contains the host package name.
-     */
     private static void writeFilteredMaps(int pid, File destFile) {
-        String hostPkg = BlackBoxCore.getHostPkg();           // "com.fs4ip.delta"
+        String hostPkg = BlackBoxCore.getHostPkg();
         java.io.BufferedReader br = null;
-        java.io.PrintWriter pw    = null;
+        java.io.PrintWriter    pw = null;
         try {
-            // Use numeric PID path to bypass our own redirect on /proc/self/maps
             br = new java.io.BufferedReader(
-                    new java.io.FileReader("/proc/" + pid + "/maps"), 65536);
+                     new java.io.FileReader("/proc/" + pid + "/maps"), 65536);
             pw = new java.io.PrintWriter(
-                    new java.io.BufferedWriter(
-                        new java.io.FileWriter(destFile), 65536));
+                     new java.io.BufferedWriter(
+                         new java.io.FileWriter(destFile), 65536));
             String line;
             while ((line = br.readLine()) != null) {
                 if (shouldFilterMapsLine(line, hostPkg)) continue;
                 pw.println(line);
             }
+            android.util.Log.d(TAG, "Filtered maps → " + destFile + " (" + destFile.length() + " B)");
         } catch (Exception e) {
             android.util.Log.w(TAG, "writeFilteredMaps: " + e.getMessage());
-            // If we can't write, create an empty file so the redirect
-            // target at least exists as a regular file
             try { destFile.createNewFile(); } catch (Exception ignored) {}
         } finally {
             if (br != null) try { br.close(); } catch (Exception ignored) {}
             if (pw != null) pw.close();
         }
-        android.util.Log.d(TAG, "Filtered maps written to " + destFile.getAbsolutePath()
-                + "  size=" + destFile.length());
     }
 
-    /**
-     * Returns true if this maps line should be hidden from the game.
-     * Strips any line whose path component contains a virtual-env fingerprint.
-     */
     private static boolean shouldFilterMapsLine(String line, String hostPkg) {
-        // Anonymous / special mappings have no path — always keep
         if (!line.contains("/")) return false;
-
-        // Strip host loader package
         if (!TextUtils.isEmpty(hostPkg) && line.contains(hostPkg)) return true;
-
-        // Strip BlackBox / niunaijun core paths
-        if (line.contains("niunaijun"))  return true;
-        if (line.contains("/blackbox/")) return true;
-        if (line.contains("Bcore"))      return true;
-        if (line.contains("BCore"))      return true;
-
-        // Strip generic virtual-engine markers
+        if (line.contains("niunaijun"))   return true;
+        if (line.contains("/blackbox/"))  return true;
+        if (line.contains("Bcore"))       return true;
+        if (line.contains("BCore"))       return true;
         if (line.contains("VirtualApp"))  return true;
         if (line.contains("virtualapp")) return true;
         if (line.contains("/sandbox/"))   return true;
-
         return false;
     }
 
-    /**
-     * Write a filtered /proc/<pid>/status that hides host UID/GID realities.
-     */
     private static void writeFilteredStatus(int pid, File destFile) {
         java.io.BufferedReader br = null;
-        java.io.PrintWriter pw    = null;
+        java.io.PrintWriter    pw = null;
         try {
-            br = new java.io.BufferedReader(
-                    new java.io.FileReader("/proc/" + pid + "/status"), 8192);
-            pw = new java.io.PrintWriter(
-                    new java.io.BufferedWriter(
-                        new java.io.FileWriter(destFile), 8192));
+            br = new java.io.BufferedReader(new java.io.FileReader("/proc/" + pid + "/status"), 8192);
+            pw = new java.io.PrintWriter(new java.io.BufferedWriter(new java.io.FileWriter(destFile), 8192));
             String line;
-            while ((line = br.readLine()) != null) {
-                pw.println(line);
-            }
+            while ((line = br.readLine()) != null) pw.println(line);
         } catch (Exception e) {
             try { destFile.createNewFile(); } catch (Exception ignored) {}
         } finally {
