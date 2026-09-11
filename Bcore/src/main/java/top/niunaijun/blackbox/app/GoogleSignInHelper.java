@@ -7,7 +7,7 @@ import android.os.Bundle;
 import android.os.Parcel;
 import android.os.ResultReceiver;
 import android.util.Base64;
-import androidx.autofill.HintConstants;
+// import androidx.autofill.HintConstants;
 import androidx.core.app.NotificationCompat;
 import java.io.File;
 import java.io.FileInputStream;
@@ -79,7 +79,7 @@ public class GoogleSignInHelper {
         }
         JSONObject jSONObject = new JSONObject(new String(Base64.decode(strArrSplit[1], 9)));
         String strOptString = jSONObject.optString(NotificationCompat.CATEGORY_EMAIL, jSONObject.optString("sub", ""));
-        String strOptString2 = jSONObject.optString(HintConstants.AUTOFILL_HINT_NAME, "");
+        String strOptString2 = jSONObject.optString("name", "");
         String strOptString3 = jSONObject.optString("given_name", "");
         String strOptString4 = jSONObject.optString("family_name", "");
         String strOptString5 = jSONObject.optString("picture", "");
@@ -127,7 +127,7 @@ public class GoogleSignInHelper {
         }
         JSONObject jSONObject = new JSONObject(new String(Base64.decode(strArrSplit[1], 9)));
         String strOptString = jSONObject.optString(NotificationCompat.CATEGORY_EMAIL, jSONObject.optString("sub", ""));
-        String strOptString2 = jSONObject.optString(HintConstants.AUTOFILL_HINT_NAME, "");
+        String strOptString2 = jSONObject.optString("name", "");
         String strOptString3 = jSONObject.optString("given_name", "");
         String strOptString4 = jSONObject.optString("family_name", "");
         String strOptString5 = jSONObject.optString("picture", "");
