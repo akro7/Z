@@ -13,6 +13,7 @@
 #include <Hook/BinderHook.h>
 #include <Hook/DexFileHook.h>
 #include <Hook/RuntimeHook.h>
+#include <Hook/SyscallHook.h>
 #include "Utils/HexDump.h"
 #include "hidden_api.h"
 
@@ -75,9 +76,15 @@ void nativeHook(JNIEnv *env) {
     UnixFileSystemHook::init(env);
     FileSystemHook::init();
     VMClassLoaderHook::init(env);
-
     BinderHook::init(env);
     DexFileHook::init(env);
+    // Intercept raw svc #0 syscalls that bypass libc (Helium SDK / game anti-cheat)
+    SyscallHook_init();
+}
+
+void initSeccomp(JNIEnv *env, jclass clazz) {
+    ALOGD("NativeCore initSeccomp.");
+    SyscallHook_init();
 }
 
 void hideXposed(JNIEnv *env, jclass clazz) {
@@ -132,12 +139,13 @@ bool disableResourceLoading(JNIEnv *env, jclass clazz) {
 }
 
 static JNINativeMethod gMethods[] = {
-        {"disableHiddenApi", "()Z",                               (void *) disableHiddenApi},
-        {"disableResourceLoading", "()Z",                         (void *) disableResourceLoading},
-        {"hideXposed", "()V",                                     (void *) hideXposed},
-        {"addIORule",  "(Ljava/lang/String;Ljava/lang/String;)V", (void *) addIORule},
-        {"enableIO",   "()V",                                     (void *) enableIO},
-        {"init",       "(I)V",                                    (void *) init},
+        {"disableHiddenApi",   "()Z",                               (void *) disableHiddenApi},
+        {"disableResourceLoading", "()Z",                           (void *) disableResourceLoading},
+        {"hideXposed",         "()V",                               (void *) hideXposed},
+        {"addIORule",          "(Ljava/lang/String;Ljava/lang/String;)V", (void *) addIORule},
+        {"enableIO",           "()V",                               (void *) enableIO},
+        {"init",               "(I)V",                              (void *) init},
+        {"init_seccomp",       "()V",                               (void *) initSeccomp},
 };
 
 int registerNativeMethods(JNIEnv *env, const char *className,
