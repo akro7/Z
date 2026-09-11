@@ -4,6 +4,8 @@
  * Helium SDK and the game's native anti-cheat (libsamuraiengine.so, libhelium.so)
  * issue raw ARM64 "svc #0" syscalls — they bypass every libc symbol we can Dobby-hook.
  *
+ * ARCHITECTURE SUPPORT: ARM32 (armeabi-v7a) and ARM64 (arm64-v8a)
+ * 
  * Strategy (same as Samurai's init_seccomp path):
  *   1. Install a seccomp BPF filter with SECCOMP_RET_TRAP on the handful of
  *      syscalls the game uses to scan the environment (openat, read, fstat,
@@ -35,7 +37,31 @@
 #include <linux/audit.h>
 #include <dirent.h>
 
-/* ── Paths the game must not see ─────────────────────────────────────────── */
+/* ── Architecture Detection ─────────────────────────────────────────────────── */
+#if defined(__aarch64__)
+    #define IS_ARM64 1
+    #define IS_ARM32 0
+#elif defined(__arm__)
+    #define IS_ARM64 0
+    #define IS_ARM32 1
+#else
+    #error "Unsupported architecture: only ARM32 (armeabi-v7a) and ARM64 (arm64-v8a) are supported"
+#endif
+
+/* ── ARM32-specific syscall number fallback ─────────────────────────────────── */
+#if IS_ARM32
+    #ifndef __NR_newfstatat
+        #define __NR_newfstatat 262
+    #endif
+    #ifndef __NR_statx
+        #define __NR_statx 397
+    #endif
+    #ifndef __NR_faccessat2
+        #define __NR_faccessat2 439
+    #endif
+#endif
+
+/* ── Paths the game must not see ─────────────────────────────────────────────── */
 static const char *BLOCKED_PATHS[] = {
     "blackbox", "akroengine", "libakroengine", "samuraiengine",
     "com.fs4ip", "top.niunaijun", "/engine/", "black_box",
@@ -52,11 +78,17 @@ static bool path_is_blocked(const char *path) {
     return false;
 }
 
-/* ── Raw syscall helper (bypasses our own seccomp filter via whitelist) ─── */
+/* ── Raw syscall helper (bypasses our own seccomp filter via whitelist) ────── */
 static inline long raw_syscall(long nr,
-                               long a1=0,long a2=0,long a3=0,
-                               long a4=0,long a5=0,long a6=0)
+                               long a1=0, long a2=0, long a3=0,
+                               long a4=0, long a5=0, long a6=0)
 {
+#if IS_ARM64
+    /* ARM64 calling convention: 
+       x8 = syscall number
+       x0-x5 = arguments
+       svc #0 = invoke syscall
+    */
     register long x8 asm("x8") = nr;
     register long x0 asm("x0") = a1;
     register long x1 asm("x1") = a2;
@@ -64,21 +96,71 @@ static inline long raw_syscall(long nr,
     register long x3 asm("x3") = a4;
     register long x4 asm("x4") = a5;
     register long x5 asm("x5") = a6;
-    asm volatile("svc #0" : "+r"(x0) : "r"(x8),"r"(x1),"r"(x2),"r"(x3),"r"(x4),"r"(x5) : "memory","cc");
+    
+    asm volatile(
+        "svc #0"
+        : "+r"(x0)
+        : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
+        : "memory", "cc"
+    );
+    
     return x0;
+
+#elif IS_ARM32
+    /* ARM32 calling convention:
+       r7 = syscall number
+       r0-r6 = arguments
+       svc #0 = invoke syscall
+    */
+    register long r7 asm("r7") = nr;
+    register long r0 asm("r0") = a1;
+    register long r1 asm("r1") = a2;
+    register long r2 asm("r2") = a3;
+    register long r3 asm("r3") = a4;
+    register long r4 asm("r4") = a5;
+    register long r5 asm("r5") = a6;
+    
+    asm volatile(
+        "svc #0"
+        : "+r"(r0)
+        : "r"(r7), "r"(r1), "r"(r2), "r"(r3), "r"(r4), "r"(r5)
+        : "memory", "cc"
+    );
+    
+    return r0;
+#endif
 }
 
-/* ── SIGSYS handler ───────────────────────────────────────────────────────── */
+/* ── SIGSYS handler ────────────────────────────────────────────────────────── */
 static void sigsys_handler(int sig, siginfo_t *si, void *ctx_v) {
     (void)sig;
     ucontext_t *ctx = reinterpret_cast<ucontext_t*>(ctx_v);
     long nr  = (long)si->si_syscall;
-    // ARM64 general registers: x0..x7 are args, x0 is return value
-    long *regs = reinterpret_cast<long*>(&ctx->uc_mcontext.regs[0]);
-
     long ret = 0;
 
-    if (nr == __NR_openat || nr == __NR_faccessat || nr == __NR_faccessat2) {
+#if IS_ARM64
+    /* ARM64 mcontext layout: regs[0..30] = x0..x30, sp, pc, pstate
+       Arguments are in x0-x5, syscall number was in x8
+    */
+    long *regs = reinterpret_cast<long*>(&ctx->uc_mcontext.regs[0]);
+
+#elif IS_ARM32
+    /* ARM32 mcontext layout: arm_context has r[0..16] = r0..r15, cpsr
+       Arguments are in r0-r6, syscall number was in r7
+    */
+    struct arm_ctxt {
+        unsigned long r[17];  /* r0..r15, cpsr */
+    };
+    arm_ctxt *mctx = reinterpret_cast<arm_ctxt*>(&ctx->uc_mcontext);
+    long *regs = reinterpret_cast<long*>(mctx->r);
+#endif
+
+    /* ── __NR_openat / __NR_faccessat / __NR_faccessat2 ─────────────────── */
+    if (nr == __NR_openat || nr == __NR_faccessat 
+        #if defined(__NR_faccessat2)
+        || nr == __NR_faccessat2
+        #endif
+    ) {
         const char *path = reinterpret_cast<const char*>(regs[1]);
         if (path_is_blocked(path)) {
             regs[0] = (long)-ENOENT;
@@ -89,6 +171,7 @@ static void sigsys_handler(int sig, siginfo_t *si, void *ctx_v) {
         return;
     }
 
+    /* ── __NR_readlinkat ────────────────────────────────────────────────── */
     if (nr == __NR_readlinkat) {
         const char *path = reinterpret_cast<const char*>(regs[1]);
         if (path_is_blocked(path)) {
@@ -100,6 +183,7 @@ static void sigsys_handler(int sig, siginfo_t *si, void *ctx_v) {
         return;
     }
 
+    /* ── __NR_read ──────────────────────────────────────────────────────── */
     if (nr == __NR_read) {
         // Let it through — we handle /proc/self/maps filtering in FileSystemHook
         // via the fd tracking table that works even for libc-bypassed fds.
@@ -108,6 +192,7 @@ static void sigsys_handler(int sig, siginfo_t *si, void *ctx_v) {
         return;
     }
 
+    /* ── __NR_statx / __NR_newfstatat ───────────────────────────────────── */
     if (nr == __NR_statx || nr == __NR_newfstatat) {
         const char *path = reinterpret_cast<const char*>(regs[1]);
         if (path_is_blocked(path)) {
@@ -119,6 +204,7 @@ static void sigsys_handler(int sig, siginfo_t *si, void *ctx_v) {
         return;
     }
 
+    /* ── __NR_getdents64 ────────────────────────────────────────────────── */
     // getdents64 — filter directory listings of /proc/self/ to hide loader entries
     if (nr == __NR_getdents64) {
         ret = raw_syscall(nr, regs[0], regs[1], regs[2]);
@@ -126,12 +212,12 @@ static void sigsys_handler(int sig, siginfo_t *si, void *ctx_v) {
         return;
     }
 
-    // Default: pass through
+    /* ── Default: pass through ──────────────────────────────────────────── */
     ret = raw_syscall(nr, regs[0], regs[1], regs[2], regs[3], regs[4], regs[5]);
     regs[0] = ret;
 }
 
-/* ── BPF filter ─────────────────────────────────────────────────────────── */
+/* ── BPF filter ────────────────────────────────────────────────────────────── */
 // SECCOMP_RET_TRAP on specific syscalls → delivers SIGSYS to the process.
 // We only trap open/stat/read variants so the filter stays minimal and fast.
 static void install_seccomp_filter() {
@@ -148,8 +234,18 @@ static void install_seccomp_filter() {
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat,   0, 1),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
+#if defined(__NR_faccessat2)
+        // Trap: faccessat2 (if available)
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat2,  0, 1),
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+#endif
+
         // Trap: readlinkat
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat,  0, 1),
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+        // Trap: read
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_read,        0, 1),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
         // Trap: statx
@@ -158,6 +254,10 @@ static void install_seccomp_filter() {
 
         // Trap: newfstatat (__NR_fstatat64 on older kernels is the same)
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat,  0, 1),
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+        // Trap: getdents64
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getdents64,  0, 1),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
         // Allow everything else
@@ -182,10 +282,17 @@ static void install_seccomp_filter() {
             return;
         }
     }
-    ALOGD("SyscallHook: seccomp filter installed (%zu instructions)", sizeof(filter)/sizeof(filter[0]));
+    
+#if IS_ARM64
+    ALOGD("SyscallHook: seccomp filter installed (%zu instructions) [ARM64]", 
+          sizeof(filter)/sizeof(filter[0]));
+#elif IS_ARM32
+    ALOGD("SyscallHook: seccomp filter installed (%zu instructions) [ARM32]", 
+          sizeof(filter)/sizeof(filter[0]));
+#endif
 }
 
-/* ── Public entry point ──────────────────────────────────────────────────── */
+/* ── Public entry point ────────────────────────────────────────────────────── */
 void SyscallHook_init() {
     // 1. Install SIGSYS signal handler first (before filter, in case of re-entry)
     struct sigaction sa{};
@@ -196,10 +303,19 @@ void SyscallHook_init() {
         ALOGE("SyscallHook: sigaction(SIGSYS) failed: %s", strerror(errno));
         return;
     }
-    ALOGD("SyscallHook: SIGSYS handler installed");
+
+#if IS_ARM64
+    ALOGD("SyscallHook: SIGSYS handler installed [ARM64]");
+#elif IS_ARM32
+    ALOGD("SyscallHook: SIGSYS handler installed [ARM32]");
+#endif
 
     // 2. Install seccomp filter
     install_seccomp_filter();
 
-    ALOGD("SyscallHook: init complete — raw syscall interception active");
+#if IS_ARM64
+    ALOGD("SyscallHook: init complete — raw syscall interception active [ARM64]");
+#elif IS_ARM32
+    ALOGD("SyscallHook: init complete — raw syscall interception active [ARM32]");
+#endif
 }
