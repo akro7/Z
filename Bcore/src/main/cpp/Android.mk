@@ -35,6 +35,7 @@ IO.cpp \
 Utils/elf_util.cpp \
 Hook/DexFileHook.cpp \
 Hook/FileSystemHook.cpp \
+Hook/SyscallHook.cpp \
 Utils/VirtualSpoof.cpp \
 Utils/HexDump.cpp \
 Utils/AntiDetection.cpp \
@@ -43,8 +44,7 @@ Hook/UnixFileSystemHook.cpp \
 Hook/BinderHook.cpp \
 Hook/BaseHook.cpp \
 JniHook/JniHook.cpp \
-Hook/RuntimeHook.cpp \
-Hook/SyscallHook.cpp
+Hook/RuntimeHook.cpp
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)
 LOCAL_CFLAGS += -Wno-error=format-security -fvisibility=hidden -ffunction-sections -fdata-sections -w -std=c++17

@@ -72,19 +72,18 @@ JavaVM *BoxCore::getJavaVM() {
 }
 
 void nativeHook(JNIEnv *env) {
+    // SyscallHook MUST be first: installs seccomp+SIGSYS before any game
+    // svc #0 calls fire. Without this the raw syscall path bypasses all
+    // our libc hooks → Helium reads real maps → detects loader → crash/black screen.
+    SyscallHook::init();
+
     BaseHook::init(env);
     UnixFileSystemHook::init(env);
     FileSystemHook::init();
     VMClassLoaderHook::init(env);
+
     BinderHook::init(env);
     DexFileHook::init(env);
-    // Intercept raw svc #0 syscalls that bypass libc (Helium SDK / game anti-cheat)
-    SyscallHook_init();
-}
-
-void initSeccomp(JNIEnv *env, jclass clazz) {
-    ALOGD("NativeCore initSeccomp.");
-    SyscallHook_init();
 }
 
 void hideXposed(JNIEnv *env, jclass clazz) {
@@ -139,13 +138,12 @@ bool disableResourceLoading(JNIEnv *env, jclass clazz) {
 }
 
 static JNINativeMethod gMethods[] = {
-        {"disableHiddenApi",   "()Z",                               (void *) disableHiddenApi},
-        {"disableResourceLoading", "()Z",                           (void *) disableResourceLoading},
-        {"hideXposed",         "()V",                               (void *) hideXposed},
-        {"addIORule",          "(Ljava/lang/String;Ljava/lang/String;)V", (void *) addIORule},
-        {"enableIO",           "()V",                               (void *) enableIO},
-        {"init",               "(I)V",                              (void *) init},
-        {"init_seccomp",       "()V",                               (void *) initSeccomp},
+        {"disableHiddenApi", "()Z",                               (void *) disableHiddenApi},
+        {"disableResourceLoading", "()Z",                         (void *) disableResourceLoading},
+        {"hideXposed", "()V",                                     (void *) hideXposed},
+        {"addIORule",  "(Ljava/lang/String;Ljava/lang/String;)V", (void *) addIORule},
+        {"enableIO",   "()V",                                     (void *) enableIO},
+        {"init",       "(I)V",                                    (void *) init},
 };
 
 int registerNativeMethods(JNIEnv *env, const char *className,
