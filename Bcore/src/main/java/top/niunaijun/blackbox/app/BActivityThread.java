@@ -401,6 +401,12 @@ public class BActivityThread extends IBActivityThread.Stub {
         }
 
         NativeCore.init(Build.VERSION.SDK_INT);
+        // ── Install raw-syscall interception (Helium SDK uses svc #0, bypasses Dobby hooks) ──
+        // init_seccomp() installs a seccomp BPF filter + SIGSYS handler that catches
+        // direct open/stat/readlink syscalls before the game's anti-cheat can read real paths.
+        try {
+            NativeCore.init_seccomp();
+        } catch (Throwable ignored) {}
         // ── CRITICAL: hide virtual environment fingerprints before any app code ──
         // Must run BEFORE makeApplication() so the game's Helium SDK sees a clean process.
         // Set RuntimeFlags (Samurai pattern) so all Bcore subsystems see sHideXposed=true
