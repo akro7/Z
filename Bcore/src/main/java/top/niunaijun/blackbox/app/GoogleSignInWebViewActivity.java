@@ -17,7 +17,6 @@ import android.webkit.WebViewClient;
 import top.niunaijun.blackbox.BlackBoxCore;
 import java.util.UUID;
 
-/* JADX INFO: loaded from: classes3.dex */
 public class GoogleSignInWebViewActivity extends Activity {
     private static final String CLIENT_ID = "697261581904-997ch5oh85im8rcq2lt172jbu92gjha6.apps.googleusercontent.com";
     private static final String FIREBASE_ORIGIN = "https://api-project-697261581904.firebaseapp.com";
@@ -25,7 +24,7 @@ public class GoogleSignInWebViewActivity extends Activity {
     private boolean tokenHandled = false;
     private WebView webView;
 
-    @Override // android.app.Activity
+    @Override
     public void onCreate(Bundle bundle) {
         super.onCreate(bundle);
         String str = "https://accounts.google.com/o/oauth2/v2/auth?client_id=697261581904-997ch5oh85im8rcq2lt172jbu92gjha6.apps.googleusercontent.com&redirect_uri=" + Uri.encode(REDIRECT_URI) + "&response_type=id_token&scope=openid%20email%20profile&nonce=" + UUID.randomUUID().toString().replace("-", "");
@@ -36,8 +35,8 @@ public class GoogleSignInWebViewActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setCacheMode(2);
-        settings.setMixedContentMode(0);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         String userAgentString = settings.getUserAgentString();
         if (userAgentString != null) {
             settings.setUserAgentString(userAgentString.replace("; wv", ""));
@@ -45,7 +44,7 @@ public class GoogleSignInWebViewActivity extends Activity {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(this.webView, true);
-        this.webView.addJavascriptInterface(new Object() { // from class: com.samurai.vengine.app.GoogleSignInWebViewActivity.1
+        this.webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void onHash(String str2) {
                 if (str2 == null || !str2.contains("id_token=")) {
@@ -59,40 +58,34 @@ public class GoogleSignInWebViewActivity extends Activity {
         this.webView.loadUrl(str);
     }
 
-    /* JADX INFO: renamed from: com.samurai.vengine.app.GoogleSignInWebViewActivity$2, reason: invalid class name */
     class AnonymousClass2 extends WebViewClient {
-        @Override // android.webkit.WebViewClient
+        @Override
         public void onReceivedError(WebView webView, WebResourceRequest webResourceRequest, WebResourceError webResourceError) {
         }
 
         AnonymousClass2() {
         }
 
-        @Override // android.webkit.WebViewClient
+        @Override
         public void onPageFinished(WebView webView, String str) {
             super.onPageFinished(webView, str);
             if (str == null || !str.startsWith(GoogleSignInWebViewActivity.REDIRECT_URI)) {
                 return;
             }
-            webView.evaluateJavascript("(function(){ return window.location.hash; })()", new ValueCallback() { // from class: com.samurai.vengine.app.GoogleSignInWebViewActivity$2$$ExternalSyntheticLambda0
-                @Override // android.webkit.ValueCallback
-                public final void onReceiveValue(Object obj) {
-                    this.f$0.m8760lambda$onPageFinished$0$comsamuraivengineappGoogleSignInWebViewActivity$2((String) obj);
+            webView.evaluateJavascript("(function(){ return window.location.hash; })()", new ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String value) {
+                    if (value != null) {
+                        String strReplace = value.replace("\"", "");
+                        if (strReplace.contains("id_token=")) {
+                            GoogleSignInWebViewActivity.this.extractAndDeliver(strReplace);
+                        }
+                    }
                 }
             });
         }
 
-        /* JADX INFO: renamed from: lambda$onPageFinished$0$com-samurai-vengine-app-GoogleSignInWebViewActivity$2, reason: not valid java name */
-        /* synthetic */ void m8760lambda$onPageFinished$0$comsamuraivengineappGoogleSignInWebViewActivity$2(String str) {
-            if (str != null) {
-                String strReplace = str.replace("\"", "");
-                if (strReplace.contains("id_token=")) {
-                    GoogleSignInWebViewActivity.this.extractAndDeliver(strReplace);
-                }
-            }
-        }
-
-        @Override // android.webkit.WebViewClient
+        @Override
         public boolean shouldOverrideUrlLoading(WebView webView, WebResourceRequest webResourceRequest) {
             String fragment;
             Uri url = webResourceRequest.getUrl();
@@ -141,7 +134,7 @@ public class GoogleSignInWebViewActivity extends Activity {
         finish();
     }
 
-    @Override // android.app.Activity
+    @Override
     public void onBackPressed() {
         WebView webView = this.webView;
         if (webView != null && webView.canGoBack()) {
@@ -155,7 +148,7 @@ public class GoogleSignInWebViewActivity extends Activity {
         super.onBackPressed();
     }
 
-    @Override // android.app.Activity
+    @Override
     public void onDestroy() {
         WebView webView = this.webView;
         if (webView != null) {
