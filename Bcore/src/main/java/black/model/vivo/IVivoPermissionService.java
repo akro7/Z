@@ -5,7 +5,6 @@ import android.os.IInterface;
 import top.niunaijun.blackreflection.annotation.BClassName;
 import top.niunaijun.blackreflection.annotation.BStaticMethod;
 
-/* JADX INFO: loaded from: classes3.dex */
 @BClassName("vivo.app.security.IVivoPermissionService")
 public interface IVivoPermissionService {
 
