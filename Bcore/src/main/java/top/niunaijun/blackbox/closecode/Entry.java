@@ -3,9 +3,11 @@ package top.niunaijun.blackbox.closecode;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.graphics.PixelFormat;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import java.io.File;
@@ -230,20 +232,18 @@ public class Entry {
 
     private static View createOverlay(Activity activity) {
         try {
-            // android.service.SurfaceView — the native JNI surface the mod lib draws into.
-            // This must be the same class the JNI exports reference:
-            //   Java_android_service_SurfaceView_onCanvasDraw
-            //   Java_android_service_SurfaceView_onSendConfig  etc.
-            Class<?> cls = Class.forName("android.service.SurfaceView",
-                    true, activity.getClassLoader());
-            View v = (View) cls.getDeclaredConstructor(Context.class)
-                               .newInstance(activity);
-            v.setLayoutParams(new ViewGroup.LayoutParams(
+            // Use android.view.SurfaceView — the standard surface the native mod lib
+            // draws into via eglSwapBuffers hook. The JNI exports in libakro.so
+            // reference Java_android_view_SurfaceView_* symbols.
+            android.view.SurfaceView sv = new android.view.SurfaceView(activity);
+            sv.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
-            v.setTag("AKRO_OVERLAY_TAG");
-            Slog.d(TAG, "Overlay view created: " + cls.getName());
-            return v;
+            sv.setTag("AKRO_OVERLAY_TAG");
+            sv.getHolder().setFormat(android.graphics.PixelFormat.TRANSLUCENT);
+            sv.setZOrderOnTop(true);
+            Slog.d(TAG, "Overlay SurfaceView created");
+            return sv;
         } catch (Throwable t) {
             Slog.e(TAG, "createOverlay failed: " + t.getMessage());
             return null;
