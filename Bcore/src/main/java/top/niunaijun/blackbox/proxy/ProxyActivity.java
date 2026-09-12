@@ -24,16 +24,34 @@ public class ProxyActivity extends Activity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.d(TAG, "onCreate");
-        finish();
 
         HookManager.get().checkEnv(HCallbackProxy.class);
 
-
-        ProxyActivityRecord record = ProxyActivityRecord.create(getIntent());
-        if (record.mTarget != null) {
-            record.mTarget.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
-            startActivity(record.mTarget);
+        Intent intent = getIntent();
+        if (intent == null) {
             return;
+        }
+
+        ProxyActivityRecord record = ProxyActivityRecord.create(intent);
+        if (record == null || record.mTarget == null) {
+            Slog.e(TAG, "ProxyActivityRecord or target is null");
+            return;
+        }
+
+        if (BActivityThread.getApplication() == null) {
+            Slog.e(TAG, "Virtual Application is NULL, aborting ProxyActivity");
+            return;
+        }
+
+        try {
+            record.mTarget.setExtrasClassLoader(BActivityThread.getApplication().getClassLoader());
+            startActivity(record.mTarget);
+        } catch (Throwable t) {
+            try {
+                Slog.e(TAG, "Failed to start target activity", t);
+            } finally {
+                finish();
+            }
         }
     }
 
