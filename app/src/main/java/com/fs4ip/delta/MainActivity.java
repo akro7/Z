@@ -117,6 +117,26 @@ public class MainActivity extends AppCompatActivity {
             showStatus("Verifying session…", C_HINT);
             silentVerify(savedKey);
         }
+
+        // ── Request MANAGE_EXTERNAL_STORAGE if not already granted ──────────
+        // BlackBoxCore.launchApk() returns false on API 30+ without this.
+        // Mirrors Samurai Engine which requests this before any launch.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                try {
+                    android.content.Intent intent = new android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:" + getPackageName())
+                    );
+                    startActivityForResult(intent, 1002);
+                } catch (Exception e) {
+                    startActivityForResult(
+                        new android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+                        1002
+                    );
+                }
+            }
+        }
     }
 
     @Override
@@ -613,13 +633,31 @@ public class MainActivity extends AppCompatActivity {
      */
     private void launchGame() {
         showStatus("", 0);
+
+        // ── Guard: MANAGE_EXTERNAL_STORAGE required on API 30+ ───────────────
+        // BlackBoxCore.launchApk() silently returns false without it.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+                && !android.os.Environment.isExternalStorageManager()) {
+            toast("Please grant 'All Files Access' permission first");
+            try {
+                android.content.Intent intent = new android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    android.net.Uri.parse("package:" + getPackageName())
+                );
+                startActivityForResult(intent, 1002);
+            } catch (Exception ignored) {
+                startActivityForResult(
+                    new android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+                    1002
+                );
+            }
+            return;
+        }
+
         try {
             boolean launched = BlackBoxCore.get().launchApk(TARGET_PKG, 0);
             if (launched) {
                 // Move LOADER to background so the game is in the foreground.
-                // Without this, on some devices the LOADER's task stays active
-                // on top of the game task, causing the "stuck on black screen"
-                // or "immediately back to launcher" behaviour.
                 // Mirrors Samurai: after launchApk() the host UI goes to back.
                 moveTaskToBack(true);
             } else {
@@ -631,6 +669,21 @@ public class MainActivity extends AppCompatActivity {
         } catch (Throwable t) {
             Log.e(TAG, "launchApk exception: " + t.getMessage(), t);
             toast("Launch error: " + t.getMessage());
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 1002) {
+            // Re-check after returning from Settings
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                if (android.os.Environment.isExternalStorageManager()) {
+                    toast("All Files Access granted ✓");
+                } else {
+                    toast("All Files Access not granted — launch may fail");
+                }
+            }
         }
     }
 

@@ -86,6 +86,15 @@ public class App extends Application {
             BlackBoxCore.get().addAppLifecycleCallback(new AppLifecycleCallback() {
 
                 @Override
+                public boolean onStoragePermissionNeeded(String packageName, int userId) {
+                    // BlackBoxCore fires this when launchApk() finds hasAllFilesAccess()==false.
+                    // We can't request from Application context — the MainActivity handles it.
+                    // Returning false lets BlackBoxCore proceed (we guard in MainActivity instead).
+                    android.util.Log.w("AKRO_App", "onStoragePermissionNeeded for: " + packageName);
+                    return false;
+                }
+
+                @Override
                 public void beforeCreateApplication(String packageName, String processName,
                                                     Context context, int userId) {
                     if (!TARGET_PKG.equals(packageName)) return;
