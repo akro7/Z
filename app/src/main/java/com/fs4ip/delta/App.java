@@ -18,7 +18,6 @@ public class App extends Application {
 
     private boolean mBlackBoxAttached = false;
 
-    // ── attachBaseContext ────────────────────────────────────────────────────
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
@@ -30,13 +29,6 @@ public class App extends Application {
                     return base.getPackageName();
                 }
 
-                /**
-                 * CRITICAL FIX: Return true so IOCore.enableRedirect() calls hideRoot(),
-                 * which adds IO redirect rules for su-binaries and triggers the native
-                 * path-redirect layer that filters virtual-env traces from /proc/self/maps.
-                 * Without this, Helium SDK reads real maps → detects BlackBox → fires the
-                 * "Security Threat Detected" alert.
-                 */
                 @Override
                 public boolean isHideRoot() {
                     return true;
@@ -46,15 +38,35 @@ public class App extends Application {
                 public boolean isEnableDaemonService() {
                     return false;
                 }
+
+                /**
+                 * CRITICAL LAUNCH FIX — must return false.
+                 *
+                 * When true (the default), BlackBoxCore.startActivity() routes through
+                 * LauncherActivity. That activity sets isRunning=true in onPause() and
+                 * calls finish() in onResume() — so the moment the game starts or
+                 * crashes, LauncherActivity resumes and destroys itself, which pops
+                 * the LOADER's MainActivity to foreground. This is the exact "crash
+                 * back to launcher" on phones and "black screen then back" on tablets.
+                 *
+                 * When false, BlackBoxCore.startActivity() calls
+                 * getBActivityManager().startActivity() directly — exactly matching
+                 * the Samurai Engine source LauncherActivity.launch() pattern:
+                 *   SamuraiEngineCore.getBActivityManager().startActivity(intent, i)
+                 * No intermediate activity, no auto-finish, no race condition.
+                 */
+                @Override
+                public boolean isEnableLauncherActivity() {
+                    return false;
+                }
             });
             mBlackBoxAttached = true;
-            Log.d(TAG, "doAttachBaseContext OK  hideRoot=true");
+            Log.d(TAG, "doAttachBaseContext OK  hideRoot=true  launcherActivity=false");
         } catch (Throwable t) {
             Log.e(TAG, "doAttachBaseContext failed: " + t.getMessage(), t);
         }
     }
 
-    // ── onCreate ─────────────────────────────────────────────────────────────
     @Override
     public void onCreate() {
         super.onCreate();
@@ -65,15 +77,12 @@ public class App extends Application {
         }
 
         try {
-            // 1. Start virtual engine
             BlackBoxCore.get().doCreate();
             Log.d(TAG, "doCreate OK");
 
-            // 2. Register injection hooks (copies .so + .tiger_k, System.load)
             Entry.attach();
             Log.d(TAG, "Entry.attach() OK");
 
-            // 3. Loader-side lifecycle mirror (matches Samurai Application.onCreate pattern)
             BlackBoxCore.get().addAppLifecycleCallback(new AppLifecycleCallback() {
 
                 @Override

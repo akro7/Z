@@ -615,7 +615,14 @@ public class MainActivity extends AppCompatActivity {
         showStatus("", 0);
         try {
             boolean launched = BlackBoxCore.get().launchApk(TARGET_PKG, 0);
-            if (!launched) {
+            if (launched) {
+                // Move LOADER to background so the game is in the foreground.
+                // Without this, on some devices the LOADER's task stays active
+                // on top of the game task, causing the "stuck on black screen"
+                // or "immediately back to launcher" behaviour.
+                // Mirrors Samurai: after launchApk() the host UI goes to back.
+                moveTaskToBack(true);
+            } else {
                 toast("Launch failed — try retrieving again");
                 isGameReady = false;
                 updateGameButtons();
