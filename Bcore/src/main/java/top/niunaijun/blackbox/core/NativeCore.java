@@ -34,8 +34,6 @@ public class NativeCore {
 
     public static native void hideXposed();
 
-    /** Install seccomp BPF + SIGSYS handler to intercept raw svc #0 syscalls
-     *  from Helium SDK / game anti-cheat that bypass our Dobby/libc hooks. */
     public static native void init_seccomp();
 
     public static native boolean disableHiddenApi();
