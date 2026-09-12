@@ -72,9 +72,9 @@ JavaVM *BoxCore::getJavaVM() {
 }
 
 void nativeHook(JNIEnv *env) {
-    // SyscallHook MUST be first: installs seccomp+SIGSYS before any game
-    // svc #0 calls fire. Without this the raw syscall path bypasses all
-    // our libc hooks → Helium reads real maps → detects loader → crash/black screen.
+    // SyscallHook FIRST: seccomp+SIGSYS must intercept raw svc #0 calls before
+    // any guest code runs. The JNI path (init_seccomp) is the primary trigger
+    // from BActivityThread; this ensures it also fires on the enableIO() path.
     SyscallHook::init();
 
     BaseHook::init(env);
